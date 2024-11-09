@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html>
+
+    <head>
+        <meta charset="utf-8" />
+        <title>three-vrm example</title>
+        <meta name="viewport"
+            content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+
+        <!-- Import Tailwind CSS from CDN -->
+        <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+
+        <style>
+            body {
+                margin: 0;
+            }
+
+            canvas {
+                display: block;
+            }
+
+            .container {
+                width: 100%;
+                position: absolute;
+                top: 20px;
+                left: 20px;
+                z-index: 1;
+                /* Pastikan tombol berada di atas canvas */
+            }
+        </style>
+    </head>
+    <style>
+        body {
+            margin: 0;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+    </head>
+
+    <body>
+        <div class="flex justify-around mt-4 w-[500px] container">
+            <button class="bg-blue-500 text-white p-2 rounded" id="smileButton">Trigger Smile</button>
+            <button class="bg-red-500 text-white p-2 rounded" id="blinkButton">Trigger Blink</button>
+        </div>
+        <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
+                "@pixiv/three-vrm": "./node_modules/@pixiv/three-vrm/lib/three-vrm.module.js"
+            }
+        }
+    </script>
+
+        <script type="module">
+            import * as THREE from 'three'
+            import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+            import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+            import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm'
+
+            // renderer
+            const renderer = new THREE.WebGLRenderer()
+            renderer.setSize(window.innerWidth, window.innerHeight)
+            renderer.setPixelRatio(window.devicePixelRatio)
+            document.body.appendChild(renderer.domElement)
+
+            // camera
+            const camera = new THREE.PerspectiveCamera(30.0, window.innerWidth / window.innerHeight, 0.1, 20.0)
+            camera.position.set(0.0, 1.0, 5.0)
+
+            // camera controls
+            const controls = new OrbitControls(camera, renderer.domElement)
+            controls.screenSpacePanning = true
+            controls.target.set(0.0, 1.0, 0.0)
+            controls.update()
+
+            // scene
+            const scene = new THREE.Scene()
+
+            // light
+            const light = new THREE.DirectionalLight(0xffffff, Math.PI)
+            light.position.set(1.0, 1.0, 1.0).normalize()
+            scene.add(light)
+
+            // gltf and vrm
+            let currentVrm = undefined
+            const loader = new GLTFLoader()
+            loader.crossOrigin = 'anonymous'
+
+            loader.register((parser) => {
+                return new VRMLoaderPlugin(parser)
+            })
+
+            loader.load(
+                './nahihi.vrm',
+                (gltf) => {
+                    const vrm = gltf.userData.vrm
+
+                    // calling these functions greatly improves the performance
+                    VRMUtils.removeUnnecessaryVertices(gltf.scene)
+                    VRMUtils.removeUnnecessaryJoints(gltf.scene)
+
+                    // Disable frustum culling
+                    vrm.scene.traverse((obj) => {
+                        obj.frustumCulled = false
+                    })
+
+                    // Tambahkan VRM ke scene
+                    scene.add(vrm.scene)
+                    // Rotasi model agar menghadap ke depan
+                    vrm.scene.rotation.y = Math.PI // Memutar 180 derajat di sumbu Y
+                    // Tambahkan BoxHelper untuk melihat bounding box model
+                    const boxHelper = new THREE.BoxHelper(vrm.scene, 0xffff00)
+                    scene.add(boxHelper)
+
+                    currentVrm = vrm
+                },
+                (progress) => console.log('Loading model...', 100.0 * (progress.loaded / progress.total), '%'),
+                (error) => console.error(error)
+            )
+
+            // helpers
+            const gridHelper = new THREE.GridHelper(10, 10)
+            scene.add(gridHelper)
+
+            const axesHelper = new THREE.AxesHelper(5)
+            scene.add(axesHelper)
+            // animate
+            const clock = new THREE.Clock()
+            var move = "gerak"
+            function triggerMove() {
+                requestAnimationFrame(triggerMove)
+                if (currentVrm) {
+                    var deltaTime = clock.getDelta()
+                    if (move == "diam") {
+                        const smileIntensity = -1 // Ubah senyum dengan intensitas acak
+                        currentVrm.expressionManager.setValue('aa', smileIntensity) // Ekspresi senyum
+                        currentVrm.expressionManager.setValue('blinkRight', 0.1) // Mengatur berkedip kanan
+
+                        currentVrm.expressionManager.setValue('smile', smileIntensity) // Mengatur ekspresi senyum
+
+
+                    } else if (move == "gerak") {
+                        const morphTargets = currentVrm.humanoid.hair
+
+
+                        const s = 0.25 * Math.PI * Math.sin(Math.PI * clock.elapsedTime)
+                        // tweak expressions for smile and blink
+                        const smileIntensity = Math.sin(0.7 * Math.PI * clock.elapsedTime) * 0.1 // Ubah ini untuk mengatur intensitas senyum
+                        const blinkIntensity = Math.sin(0.3 * Math.PI * clock.elapsedTime) * 0.2 // Berkedip
+                        const blinkIntensityLeft = Math.sin(0.5 * Math.PI * clock.elapsedTime) * 0.1 // Berkedip
+                        currentVrm.expressionManager.setValue('aa', smileIntensity) // Ekspresi senyum
+                        currentVrm.expressionManager.setValue('blinkRight', 0.05 + blinkIntensityLeft) // Ekspresi berkedip kanan
+                        currentVrm.expressionManager.setValue('blinkLeft', 0.05 + blinkIntensityLeft) // Ekspresi berkedip kiri
+                        // currentVrm.expressionManager.setValue('head', 0.5) // Mengatur ekspresi kepala
+                        currentVrm.expressionManager.setValue('smile', smileIntensity) // Mengatur ekspresi senyum
+                        // Gerakan kepala ke kanan sedikit
+                        // const headTilt = Math.sin(2 * Math.PI * clock.elapsedTime) * 0.02 // Ubah 0.1 untuk mengatur sudut kemiringan
+                        // currentVrm.humanoid.getNormalizedBoneNode('neck').rotation.y = headTilt
+                        // currentVrm.humanoid.getNormalizedBoneNode('neck').rotation.x = -headTilt
+
+                        // Atur tangan agar mengarah ke bawah
+                        // currentVrm.humanoid.getNormalizedBoneNode('leftUpperArm').rotation.x = Math.PI / 2 // Tangan kiri di bawah
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm').rotation.x = Math.PI / 2 // Tangan kanan di bawah
+                        currentVrm.humanoid.getNormalizedBoneNode('leftUpperArm').rotation.z = 1.5
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm').rotation.x = s
+
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm').rotation.x = 0.5
+                        currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm').rotation.z = -1.5
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm').rotation.z = -1.2
+
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightLowerArm').rotation.x = -0.3
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightLowerArm').rotation.y = 2.5
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightLowerArm').rotation.z = Math.sin(2 * Math.PI * clock.elapsedTime) * 0.01
+
+                        currentVrm.humanoid.getNormalizedBoneNode('rightLowerLeg').rotation.y = 0.2
+                        currentVrm.humanoid.getNormalizedBoneNode('rightUpperLeg').rotation.y = 0.2
+                        currentVrm.humanoid.getNormalizedBoneNode('hips').rotation.y = 0.1 * smileIntensity
+
+
+
+                    } else if (move == "smile") {
+                        const smileIntensity = 1 // Ubah senyum dengan intensitas acak
+                        currentVrm.expressionManager.setValue('aa', smileIntensity) // Ekspresi senyum
+                        currentVrm.expressionManager.setValue('blinkRight', 0.1) // Mengatur berkedip kanan
+                        // currentVrm.expressionManager.setValue('blinkLeft', 1) // Mengatur berkedip kiri
+                        // tweak expressions for smile and blink
+                        // const blinkIntensity = Math.sin(2 * Math.PI * clock.elapsedTime) * 2 // Berkedip
+                        // const blinkIntensityLeft = Math.sin(2 * Math.PI * clock.elapsedTime) * 0.1 // Berkedip
+                        currentVrm.expressionManager.setValue('aa', smileIntensity) // Ekspresi senyum
+                        // currentVrm.expressionManager.setValue('blinkRight', 0.5 + blinkIntensity) // Ekspresi berkedip kanan
+                        // currentVrm.expressionManager.setValue('blinkLeft', 0.1 + blinkIntensityLeft) // Ekspresi berkedip kiri
+                        // currentVrm.expressionManager.setValue('head', 0.5) // Mengatur ekspresi kepala
+                        currentVrm.expressionManager.setValue('smile', smileIntensity) // Mengatur ekspresi senyum
+                        // Gerakan kepala ke kanan sedikit
+                        // const headTilt = Math.sin(2 * Math.PI * clock.elapsedTime) * 0.02 // Ubah 0.1 untuk mengatur sudut kemiringan
+                        // currentVrm.humanoid.getNormalizedBoneNode('neck').rotation.y = headTilt
+                        // currentVrm.humanoid.getNormalizedBoneNode('neck').rotation.x = -headTilt
+
+                        // // Atur tangan agar mengarah ke bawah
+                        // // currentVrm.humanoid.getNormalizedBoneNode('leftUpperArm').rotation.x = Math.PI / 2 // Tangan kiri di bawah
+                        // // currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm').rotation.x = Math.PI / 2 // Tangan kanan di bawah
+                        // currentVrm.humanoid.getNormalizedBoneNode('leftUpperArm').rotation.z = 1.5
+                        // // currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm').rotation.x = s
+
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm').rotation.x = 0.5
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm').rotation.z = 1
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm').rotation.z = -1.2
+
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightLowerArm').rotation.x = -0.3
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightLowerArm').rotation.y = 2.5
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightLowerArm').rotation.z = Math.sin(2 * Math.PI * clock.elapsedTime) * 0.01
+
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightLowerLeg').rotation.y = 0.2
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightUpperLeg').rotation.y = 0.5
+                        // currentVrm.humanoid.getNormalizedBoneNode('hips').rotation.y = 0.2
+
+                        // Atur tangan agar mengarah ke bawah
+                        // currentVrm.humanoid.getNormalizedBoneNode('leftUpperArm').rotation.x = Math.PI / 2 // Tangan kiri di bawah
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm').rotation.x = Math.PI / 2 // Tangan kanan di bawah
+                        // currentVrm.humanoid.getNormalizedBoneNode('leftUpperArm').rotation.z = 1.5
+
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm').rotation.z = -1.5
+
+                        // currentVrm.humanoid.getNormalizedBoneNode('hips').rotation.y = 0.2
+                        setTimeout(() => {
+                            move = "gerak"
+                            triggerMove()
+                        }, 1000)
+                    } else if (move == "blink") {
+
+                        const s = 0.25 * Math.PI * Math.sin(Math.PI)
+                        // tweak expressions for smile and blink
+                        const smileIntensity = Math.sin(2 * Math.PI) * 0.5 // Ubah ini untuk mengatur intensitas senyum
+                        const blinkIntensity = Math.sin(2 * Math.PI) * 2 // Berkedip
+                        const blinkIntensityLeft = Math.sin(2 * Math.PI) * 0.1 // Berkedip
+                        currentVrm.expressionManager.setValue('aa', smileIntensity) // Ekspresi senyum
+                        currentVrm.expressionManager.setValue('blinkRight', 0.5 + blinkIntensity) // Ekspresi berkedip kanan
+                        currentVrm.expressionManager.setValue('blinkLeft', 0.1 + blinkIntensityLeft) // Ekspresi berkedip kiri
+                        currentVrm.expressionManager.setValue('head', 0.5) // Mengatur ekspresi kepala
+                        currentVrm.expressionManager.setValue('smile', smileIntensity) // Mengatur ekspresi senyum
+                        // Gerakan kepala ke kanan sedikit
+                        const headTilt = Math.sin(2 * Math.PI) * 0.02 // Ubah 0.1 untuk mengatur sudut kemiringan
+                        currentVrm.humanoid.getNormalizedBoneNode('neck').rotation.y = headTilt
+                        currentVrm.humanoid.getNormalizedBoneNode('neck').rotation.x = -headTilt
+
+                        // Atur tangan agar mengarah ke bawah
+                        // currentVrm.humanoid.getNormalizedBoneNode('leftUpperArm').rotation.x = Math.PI / 2 // Tangan kiri di bawah
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm').rotation.x = Math.PI / 2 // Tangan kanan di bawah
+                        currentVrm.humanoid.getNormalizedBoneNode('leftUpperArm').rotation.z = 1.5
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm').rotation.x = s
+
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm').rotation.x = 0.5
+                        currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm').rotation.z = -1.5
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm').rotation.z = -1.2
+
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightLowerArm').rotation.x = -0.3
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightLowerArm').rotation.y = 2.5
+                        // currentVrm.humanoid.getNormalizedBoneNode('rightLowerArm').rotation.z = Math.sin(2 * Math.PI * clock.elapsedTime) * 0.01
+
+                        currentVrm.humanoid.getNormalizedBoneNode('rightLowerLeg').rotation.y = 0.2
+                        currentVrm.humanoid.getNormalizedBoneNode('rightUpperLeg').rotation.y = 0.2
+                        // currentVrm.humanoid.getNormalizedBoneNode('hips').rotation.y = 0.1
+                        setTimeout(() => {
+                            move = "gerak"
+                            triggerMove()
+                        }, 1000)
+                    }
+
+
+                    currentVrm.update(deltaTime)
+                }
+
+
+                renderer.render(scene, camera)
+            }
+            setTimeout(() => {
+                move = "gerak"
+                triggerMove()
+            }, 1000)
+
+            document.getElementById('smileButton').addEventListener('click', () => {
+
+                move = "smile"
+                triggerMove()
+            })
+
+            document.getElementById('blinkButton').addEventListener('click', () => {
+
+                move = "blink"
+                triggerMove()
+            })
+        </script>
+    </body>
+
+</html>
